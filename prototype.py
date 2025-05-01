@@ -26,13 +26,16 @@ cheat_rotation_speed = 2  # degrees per frame
 cheat_fire_cooldown = 10  # frames between shots
 cheat_fire_timer = 0
 
+BOUNDARY_WIDTH= GRID_WIDTH// 2 - 20  # Leave a margin from the walls
+BOUNDARY_HIGHT= GRID_LENGTH// 2 - 20  # Leave a margin from the walls
+
 
 
 
 def spawn_enemy(min_distance=150):
     while True:
         x = random.randint(-GRID_WIDTH // 2 + 50, GRID_WIDTH // 2 - 50)
-        y = 800#random.randint(-GRID_LENGTH // 2 + 50, GRID_LENGTH // 2 - 50)
+        y = -800#random.randint(-GRID_LENGTH // 2 + 50, GRID_LENGTH // 2 - 50)
         z = 10  # Ground level
 
         px, py, _ = player_pos
@@ -54,7 +57,8 @@ pulse_time = 0.0
 bullets = []  # Each bullet = {'pos': [x, y, z], 'angle': deg}
 bullet_speed = 5
 
-BOUNDARY = GRID_WIDTH// 2 - 20  # Leave a margin from the walls
+BOUNDARY_WIDTH= GRID_WIDTH- 20  # Leave a margin from the walls
+BOUNDARY_HIGHT= GRID_LENGTH - 20  # Leave a margin from the walls
 
 
 
@@ -168,18 +172,26 @@ def draw_player():
     glPopMatrix()
 
 def draw_floor_with_boundaries():
-    grid_row = 20
-    grid_col = 3
-    tile_size = 80
+    grid_row = 40
+    grid_col = 6
+    tile_size = 40
     half_size_col = grid_col * tile_size / 2.0
     half_size_row = grid_row * tile_size / 2.0
-
+    color_r= 1
+    color_g= 1
+    color_b= 1
     for i in range(grid_col):
+        
+        
         for j in range(grid_row):
+            color_r -= .0001
+            color_g -= .00322
+            color_b -= .022
+            '''
             if (i + j) % 2 == 0:
                 glColor3f(1.0, 1.0, 1.0)
-            else:
-                glColor3f(0.8, 0.6, 1.0)
+            else:'''
+            glColor3f(color_r, color_g, color_b)
             x = i * tile_size - half_size_col
             y = j * tile_size - half_size_row
             
@@ -191,6 +203,7 @@ def draw_floor_with_boundaries():
             glVertex3f(x, y + tile_size, 0)
             
             glEnd()
+        
 
     wall_height = tile_size
     wall_thickness = 30
@@ -384,15 +397,18 @@ def keyboardListener(key, x, y):
     elif key == b'w':
         new_x = player_pos[0] + move_step * sin(radians(player_angle))
         new_y = player_pos[1] + move_step * cos(radians(player_angle))
-        if abs(new_x) < BOUNDARY and abs(new_y) < BOUNDARY:
+        
+        if abs(new_x) < BOUNDARY_WIDTH and abs(new_y) < BOUNDARY_HIGHT:
             player_pos[0] = new_x
             player_pos[1] = new_y
+            
     elif key == b's':
         new_x = player_pos[0] - move_step * sin(radians(player_angle))
         new_y = player_pos[1] - move_step * cos(radians(player_angle))
-        if abs(new_x) < BOUNDARY and abs(new_y) < BOUNDARY:
+        if abs(new_x) < BOUNDARY_WIDTH and abs(new_y) < BOUNDARY_HIGHT:
             player_pos[0] = new_x
             player_pos[1] = new_y
+           
     elif key == b'a':
         player_angle -= rotate_step
     elif key == b'd':
