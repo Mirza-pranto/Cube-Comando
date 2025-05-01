@@ -4,6 +4,7 @@ from OpenGL.GLU import *
 from math import sin, cos, radians
 import math
 import random
+import time
 
 # === Global Variables ===
 camera_pos = (0, 500, 500)
@@ -48,6 +49,14 @@ pulse_time = 0.0
 
 bullets = []  # Each bullet = {'pos': [x, y, z], 'angle': deg}
 bullet_speed = 5
+
+# Sphere markers variables
+SPHERE_RADIUS = GRID_WIDTH * 1.5  # Much larger than grid width
+sphere_markers = [
+    {'pos': [0, -GRID_LENGTH//2 - SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [1, 1, 1], 'blink_time': 0},  # Entrance sphere
+    {'pos': [0, GRID_LENGTH//2 + SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [1, 1, 1], 'blink_time': 0}    # Exit sphere
+]
+BLINK_DURATION = 30  # frames
 
 # Initialize enemies
 def init_enemies():
@@ -126,9 +135,13 @@ def mouseListener(button, state, x, y):
 
 # === Game Functions ===
 def spawn_enemy(min_distance=150, is_new_type=False):
+    # Trigger entrance sphere blink
+    sphere_markers[0]['blink_time'] = BLINK_DURATION
+    sphere_markers[0]['color'] = [0, 1, 0]  # Green for spawn
+    
     while True:
         x = random.randint(-GRID_WIDTH // 2 + 50, GRID_WIDTH // 2 - 50)
-        y = random.choice([-GRID_LENGTH//2 + 50, GRID_LENGTH//2 - 50])
+        y = -GRID_LENGTH//2 + 50  # Always spawn at entrance
         z = 10
 
         px, py, _ = player_pos
@@ -141,11 +154,9 @@ def spawn_enemy(min_distance=150, is_new_type=False):
                 return (x, y, z)
 
 def spawn_pickup():
-    #x = random.randint(-GRID_WIDTH//2 + 30, GRID_WIDTH//2 - 30)
     x = random.randint(-GRID_WIDTH/2, GRID_WIDTH/2)
-    #y = random.choice([-GRID_LENGTH//2 + 30, GRID_LENGTH//2 - 30])
     y = -GRID_LENGTH
-    z = 30  # Increased height for better visibility
+    z = 30
     
     pickup_type = random.choice(['health', 'ammo', 'score'])
     speed = random.uniform(0.8, 1.5)
@@ -186,6 +197,19 @@ def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
+
+def draw_sphere_markers():
+    for marker in sphere_markers:
+        if marker['blink_time'] > 0:
+            marker['blink_time'] -= 1
+            if marker['blink_time'] <= 0:
+                marker['color'] = [1, 1, 1]  # Reset to white
+        
+        glPushMatrix()
+        glTranslatef(*marker['pos'])
+        glColor3f(*marker['color'])
+        glutSolidSphere(SPHERE_RADIUS, 50, 50)  # Larger and smoother spheres
+        glPopMatrix()
 
 def draw_player():
     glPushMatrix()
@@ -327,7 +351,7 @@ def draw_pickup(pickup):
         glColor3f(1.0, 0.4, 0.7)  # Pink
     
     glRotatef(pulse_time * 50, 0, 1, 1)
-    glutSolidCube(25)  # Increased size from 20 to 25
+    glutSolidCube(25)
     glPopMatrix()
 
 def draw_bullet(bullet):
@@ -357,6 +381,12 @@ def move_enemy_towards_player():
             ex += dx * speed
             ey += dy * speed
 
+        # Check if enemy reached exit sphere
+        if ey > GRID_LENGTH//2 - 50:
+            sphere_markers[1]['blink_time'] = BLINK_DURATION
+            sphere_markers[1]['color'] = [1, 0, 0]  # Red for exit
+            ex, ey, ez = spawn_enemy()
+            
         updated_positions.append((ex, ey, ez))
     enemy_positions[:] = updated_positions
 
@@ -372,6 +402,11 @@ def move_new_enemies():
             
         if (abs(enemy['pos'][0]) > BOUNDARY_WIDTH or 
             abs(enemy['pos'][1]) > BOUNDARY_HIGHT):
+            new_enemy_positions.remove(enemy)
+            score += 1000
+        elif enemy['pos'][1] > GRID_LENGTH//2 - 50:  # Reached exit
+            sphere_markers[1]['blink_time'] = BLINK_DURATION
+            sphere_markers[1]['color'] = [1, 0, 0]  # Red for exit
             new_enemy_positions.remove(enemy)
             score += 1000
 
@@ -393,7 +428,7 @@ def check_collisions():
 
     bullet_radius = 10
     enemy_radius = 20
-    player_radius = 30  # Increased from 25
+    player_radius = 30
     new_bullets = []
     
     # Bullet collisions
@@ -460,20 +495,19 @@ def check_collisions():
             if player_life <= 0:
                 game_over = True
 
-    # Improved pickup collisions
+    # Pickup collisions
     px, py, pz = player_pos
-    player_collision_height = pz + 50  # Adjust for player height
+    player_collision_height = pz + 50
     
     for pickup in pickups[:]:
         pickup_x, pickup_y, pickup_z = pickup['pos']
         
-        # Calculate distance between player and pickup
         dx = px - pickup_x
         dy = py - pickup_y
         dz = player_collision_height - pickup_z
         
         distance_sq = dx*dx + dy*dy + dz*dz
-        collision_distance_sq = (player_radius + 15)**2  # 15 is pickup size
+        collision_distance_sq = (player_radius + 15)**2
         
         if distance_sq < collision_distance_sq:
             if pickup['type'] == 'health':
@@ -618,6 +652,7 @@ def showScreen():
     
     draw_floor_with_boundaries()
     draw_player()
+    draw_sphere_markers()  # Draw the sphere markers
 
     for enemy in enemy_positions:
         draw_enemy(enemy)
@@ -638,7 +673,7 @@ def init():
     glClearColor(0, 0, 0, 1)
     glEnable(GL_DEPTH_TEST)
     glMatrixMode(GL_MODELVIEW)
-    init_enemies()  # Initialize enemies at start
+    init_enemies()
 
 # === Entry Point ===
 if __name__ == "__main__":
