@@ -66,6 +66,11 @@ escaped_enemies = 0
 MAX_ESCAPED_ENEMIES = 20
 game_over_reason = ""  # Can be "life", "bullets", or "escaped"
 
+game_started = False
+last_score = 0
+last_reason = ""
+pickup_messages = []  # List of messages to show when pickups are collected
+PICKUP_MESSAGE_DURATION = 120 # frames (about 2 seconds at 60fps)
 # Initialize enemies
 def init_enemies():
     global enemy_positions
@@ -73,12 +78,18 @@ def init_enemies():
 
 # === Input Handlers ===
 def keyboardListener(key, x, y):
-    global fovY, player_pos, player_angle, game_over
+    global fovY, player_pos, player_angle, game_over, game_started, game_over_reason
+    if not game_started and key == b' ':
+        game_started = True
+        glutPostRedisplay()
+        return
+    
     move_step = 10
     rotate_step = 25
 
     if key == b'r' and game_over:
         reset_game()
+        glutPostRedisplay()
         return
 
     if game_over:
@@ -95,6 +106,7 @@ def keyboardListener(key, x, y):
             print("Player fell off the bridge")
             game_over = True
             fall = True
+            game_over_reason = "fall"
         player_pos[0] = new_x
         player_pos[1] = new_y
     elif key == b's':
@@ -103,7 +115,8 @@ def keyboardListener(key, x, y):
         if abs(new_x) > BOUNDARY_WIDTH or abs(new_y) > BOUNDARY_HIGHT:
             print("Player fell off the bridge")
             game_over = True
-            fall = True    
+            fall = True  
+            game_over_reason = "fall"  
         player_pos[0] = new_x
         player_pos[1] = new_y
     elif key == b'a':
@@ -191,12 +204,17 @@ def reset_game():
     global player_pos, bullets, player_life, missed_bullets
     global game_over, score, pickup_spawn_timer, new_enemy_positions, pickups
     global escaped_enemies, game_over_reason, giant_enemies, giant_enemy_spawn_timer
+    global last_score, last_reason, game_started, pickup_messages
+    
+    last_score = score
+    last_reason = game_over_reason
     
     player_pos = [0, 780, -30]
     bullets = []
     init_enemies()
     new_enemy_positions = []
     pickups = []
+    pickup_messages = []
     player_life = 5
     missed_bullets = 0
     game_over = False
@@ -206,7 +224,9 @@ def reset_game():
     game_over_reason = ""
     giant_enemies = []
     giant_enemy_spawn_timer = 0
-
+    game_started = True  # Auto-start after reset
+    glutPostRedisplay()
+    
 # === Drawing Functions ===
 def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
     glColor3f(1, 1, 1)
@@ -481,10 +501,9 @@ def move_new_enemies():
         else:
             enemy['pos'][1] += speed * 0.8
             
-        if (abs(enemy['pos'][0]) > BOUNDARY_WIDTH or 
-            abs(enemy['pos'][1]) > BOUNDARY_HIGHT):
+        if (abs(enemy['pos'][0]) > BOUNDARY_WIDTH or abs(enemy['pos'][1]) > BOUNDARY_HIGHT):
             new_enemy_positions.remove(enemy)
-            score += 1000
+            score += 100
         elif enemy['pos'][1] > GRID_LENGTH - 50:  # Reached exit
             sphere_markers[1]['blink_time'] = BLINK_DURATION
             sphere_markers[1]['color'] = [1, 0, 0]  # Red for exit
@@ -641,7 +660,6 @@ def check_collisions():
             if player_life <= 0:
                 game_over = True
                 game_over_reason = "life"
-
     # Giant enemy-player collisions
     for enemy in giant_enemies[:]:
         ex, ey, ez = enemy['pos']
@@ -669,13 +687,13 @@ def check_collisions():
         if distance_sq < collision_distance_sq:
             if pickup['type'] == 'health':
                 player_life = min(10, player_life + 5)
-                print(f"Health +5! Life: {player_life}")
+                pickup_messages.append({'text': "Health +5!", 'time': PICKUP_MESSAGE_DURATION})
             elif pickup['type'] == 'ammo':
                 missed_bullets = max(0, missed_bullets - 5)
-                print(f"Ammo +5! Missed bullets: {missed_bullets}")
+                pickup_messages.append({'text': "Ammo +5!", 'time': PICKUP_MESSAGE_DURATION})
             else:  # score
                 score += 30
-                print(f"Score +30! Total: {score}")
+                pickup_messages.append({'text': "Score +30!", 'time': PICKUP_MESSAGE_DURATION})
             
             pickups.remove(pickup)
 
@@ -760,7 +778,7 @@ def look():
 # === Main Game Loop ===
 def idle():
     global pulse_time, game_over, cheat_fire_timer
-    global new_enemy_spawn_timer, pickup_spawn_timer, score, giant_enemy_spawn_timer
+    global new_enemy_spawn_timer, pickup_spawn_timer, score, giant_enemy_spawn_timer ,game_over_reason
 
     if game_over:
         return
@@ -809,12 +827,109 @@ def idle():
     elif missed_bullets >= 10:
         game_over = True
         game_over_reason = "bullets"
-
     glutPostRedisplay()
 
+def draw_start_screen():
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    
+    # Set up orthogonal projection for 2D rendering
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, 1000, 0, 800)
+    
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+    
+    
+    
+    # Title - using larger font
+    glColor3f(1, 1, 1)
+    
+    glRasterPos2f(300, 650)
+    for char in "CUBE COMMANDO: ALONE WARRIOR":
+        glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, ord(char))
+    
+    # Story lines
+    story_lines = [
+        "In a world dominated by evil circles,",
+        "you are the last square warrior standing.",
+        "",
+        "Defend your bridge from the invading circles!",
+        "",
+        
+        "Press SPACE to begin your defense!"
+    ]
+    
+    y_pos = 550
+    for line in story_lines:
+        glRasterPos2f(350, y_pos)
+        for char in line:
+            glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+        y_pos -= 30
+        
+        
+    # Dark background
+    glColor3f(0.1, 0.1, 0.2)
+    glBegin(GL_QUADS)
+    glVertex2f(0, 0)
+    glVertex2f(1000, 0)
+    glVertex2f(1000, 800)
+    glVertex2f(0, 800)
+    
+    glEnd()
+    # Restore matrices
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+    
+    glutSwapBuffers()
+
+def draw_pickup_notifications():
+    if not pickup_messages:
+        return
+        
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, 1000, 0, 800)
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+    
+    # Position in top-right corner
+    x_pos = 700
+    y_pos = 700
+    
+    for i, message in enumerate(pickup_messages[:]):
+        # Fade out effect based on remaining time
+        alpha = min(1.0, message['time'] / (PICKUP_MESSAGE_DURATION/2))
+        glColor4f(1, 1, 1, alpha)
+        
+        draw_text(x_pos, y_pos - i*30, message['text'], GLUT_BITMAP_HELVETICA_12)
+        
+        # Update timer and remove expired messages
+        message['time'] -= 1
+        if message['time'] <= 0:
+            pickup_messages.remove(message)
+    
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+
 def showScreen():
+    global game_started, game_over, game_over_reason
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
+    
+    if not game_started:
+        draw_start_screen()
+        return
+
+    
     glViewport(0, 0, 1000, 800)
     setupCamera()
     
@@ -839,6 +954,9 @@ def showScreen():
     for bullet in bullets:
         draw_bullet(bullet)
 
+    # Draw pickup notifications
+    draw_pickup_notifications()
+
     # Game over messages
     if game_over:
         glMatrixMode(GL_PROJECTION)
@@ -848,33 +966,49 @@ def showScreen():
         glMatrixMode(GL_MODELVIEW)
         glPushMatrix()
         glLoadIdentity()
-        
-        # Dark semi-transparent background
-        glColor4f(0, 0, 0, 0.7)
-        glBegin(GL_QUADS)
-        glVertex2f(200, 300)
-        glVertex2f(800, 300)
-        glVertex2f(800, 500)
-        glVertex2f(200, 500)
-        glEnd()
-        
+        m= "asdfgasdf"
         # Message text
         if game_over_reason == "escaped":
             glColor3f(1, 0.2, 0.2)
-            draw_text(250, 450, "The Square world is destroyed by the circles!", GLUT_BITMAP_TIMES_ROMAN_24)
+            draw_text(250, 800, "The Square world is destroyed by the circles!", GLUT_BITMAP_TIMES_ROMAN_24)
+            m = "The Square world is destroyed by the circles!"
         elif game_over_reason == "life":
             glColor3f(1, 0.2, 0.2)
-            draw_text(350, 450, "Game Over! You were defeated!", GLUT_BITMAP_TIMES_ROMAN_24)
+            draw_text(350, 800, "Game Over! You were defeated!", GLUT_BITMAP_TIMES_ROMAN_24)
+            m = "Game Over! You were defeated!"
         elif game_over_reason == "bullets":
             glColor3f(1, 0.2, 0.2)
-            draw_text(350, 450, "Game Over! You ran out of ammo!", GLUT_BITMAP_TIMES_ROMAN_24)
+            draw_text(350, 800, "Game Over! You ran out of ammo!", GLUT_BITMAP_TIMES_ROMAN_24)
+            m= "Game Over! You ran out of ammo!"
+        elif game_over_reason == "fall":
+            glColor3f(1, 0.2, 0.2)
+            draw_text(350, 800, "Game Over! You have fall of the Bridge!", GLUT_BITMAP_TIMES_ROMAN_24)
+            m= "Game Over! You have fall of the Bridge!"
         
-        draw_text(350, 400, "Press 'R' to restart", GLUT_BITMAP_HELVETICA_18)
+        # Show last score and reason
+        glColor3f(1, 1, 1)
+        draw_text(350, 450, f"Final Score: {score}", GLUT_BITMAP_HELVETICA_18)
+        draw_text(350, 420, f"Reason: {m}", GLUT_BITMAP_HELVETICA_18)
+        print(m)
+        
+        draw_text(400, 350, "Press 'R' to restart", GLUT_BITMAP_HELVETICA_18)
+        # Dark semi-transparent background
+        glColor4f(0.1, 0.2, 0, 0.3)
+        glBegin(GL_QUADS)
+        glVertex2f(200, 250)
+        glVertex2f(800, 250)
+        glVertex2f(800, 550)
+        glVertex2f(200, 550)
+        glEnd()
         
         glPopMatrix()
         glMatrixMode(GL_PROJECTION)
         glPopMatrix()
         glMatrixMode(GL_MODELVIEW)
+        
+        
+        
+        
 
     glutSwapBuffers()
 
