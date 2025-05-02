@@ -4,7 +4,6 @@ from OpenGL.GLU import *
 from math import sin, cos, radians
 import math
 import random
-import time
 
 # === Global Variables ===
 camera_pos = (0, 500, 500)
@@ -51,12 +50,16 @@ bullets = []  # Each bullet = {'pos': [x, y, z], 'angle': deg}
 bullet_speed = 5
 
 # Sphere markers variables
-SPHERE_RADIUS = GRID_WIDTH * 1.5  # Much larger than grid width
+SPHERE_RADIUS = GRID_WIDTH * 1.2  # Much larger than grid width
 sphere_markers = [
-    {'pos': [0, -GRID_LENGTH//2 - SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [1, 1, 1], 'blink_time': 0},  # Entrance sphere
-    {'pos': [0, GRID_LENGTH//2 + SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [1, 1, 1], 'blink_time': 0}    # Exit sphere
+    {'pos': [0, -GRID_LENGTH +65 - SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [.8, 1, 0], 'blink_time': 0},  # Entrance sphere
+    {'pos': [0, GRID_LENGTH -130+ SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [1, .8, 0], 'blink_time': 0}    # Exit sphere
 ]
 BLINK_DURATION = 30  # frames
+
+# Add this with other global variables
+escaped_enemies = 0
+MAX_ESCAPED_ENEMIES = 20
 
 # Initialize enemies
 def init_enemies():
@@ -137,11 +140,11 @@ def mouseListener(button, state, x, y):
 def spawn_enemy(min_distance=150, is_new_type=False):
     # Trigger entrance sphere blink
     sphere_markers[0]['blink_time'] = BLINK_DURATION
-    sphere_markers[0]['color'] = [0, 1, 0]  # Green for spawn
+    sphere_markers[0]['color'] = [1, 1, 1]  # white for spawn
     
     while True:
-        x = random.randint(-GRID_WIDTH // 2 + 50, GRID_WIDTH // 2 - 50)
-        y = -GRID_LENGTH//2 + 50  # Always spawn at entrance
+        x = random.randint(-GRID_WIDTH / 2 , GRID_WIDTH /2)
+        y = -GRID_LENGTH + 50  # Always spawn at entrance
         z = 10
 
         px, py, _ = player_pos
@@ -166,6 +169,7 @@ def spawn_pickup():
 def reset_game():
     global player_pos, bullets, player_life, missed_bullets
     global game_over, score, pickup_spawn_timer, new_enemy_positions, pickups
+    global escaped_enemies  # Add this line
     
     player_pos = [0, 780, -30]
     bullets = []
@@ -177,6 +181,7 @@ def reset_game():
     game_over = False
     score = 0
     pickup_spawn_timer = 0
+    escaped_enemies = 0  # Reset the counter
 
 # === Drawing Functions ===
 def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
@@ -199,16 +204,25 @@ def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
     glMatrixMode(GL_MODELVIEW)
 
 def draw_sphere_markers():
-    for marker in sphere_markers:
+    for i, marker in enumerate(sphere_markers):
         if marker['blink_time'] > 0:
             marker['blink_time'] -= 1
             if marker['blink_time'] <= 0:
-                marker['color'] = [1, 1, 1]  # Reset to white
+                marker['color'] = [1, 1, 0]  # Reset to yellow
         
         glPushMatrix()
         glTranslatef(*marker['pos'])
         glColor3f(*marker['color'])
-        glutSolidSphere(SPHERE_RADIUS, 50, 50)  # Larger and smoother spheres
+        
+        if i == 1:  # This is the exit marker (index 1)
+            # Draw a cube instead of sphere for the exit
+            glScalef(1.2, 0.1, 1.2)
+            glutSolidCube(SPHERE_RADIUS * 1.5)  # Slightly larger than the sphere would be
+        else:
+            # Draw normal sphere for entrance
+            
+            glutSolidSphere(SPHERE_RADIUS, 50, 50)
+        
         glPopMatrix()
 
 def draw_player():
@@ -307,10 +321,10 @@ def draw_enemy(position):
     glTranslatef(x, y, z)
     glScalef(scale, scale, scale)
 
-    glColor3f(1.0, 1.0, 1.0)
+    glColor3f(.5, .5, 1.0)
     gluSphere(gluNewQuadric(), 30, 35, 20)  
 
-    glColor3f(1.0, 0, 0)
+    glColor3f(0, 0, 0.501)
     glTranslatef(0, 0, 30)
     gluSphere(gluNewQuadric(), 15, 20, 20)  
     glPopMatrix()
@@ -382,7 +396,7 @@ def move_enemy_towards_player():
             ey += dy * speed
 
         # Check if enemy reached exit sphere
-        if ey > GRID_LENGTH//2 - 50:
+        if ey > GRID_LENGTH - 50:
             sphere_markers[1]['blink_time'] = BLINK_DURATION
             sphere_markers[1]['color'] = [1, 0, 0]  # Red for exit
             ex, ey, ez = spawn_enemy()
@@ -391,7 +405,8 @@ def move_enemy_towards_player():
     enemy_positions[:] = updated_positions
 
 def move_new_enemies():
-    global new_enemy_positions, score
+    global new_enemy_positions, score, escaped_enemies, game_over
+    
     speed = 1.5
     
     for enemy in new_enemy_positions[:]:
@@ -404,11 +419,14 @@ def move_new_enemies():
             abs(enemy['pos'][1]) > BOUNDARY_HIGHT):
             new_enemy_positions.remove(enemy)
             score += 1000
-        elif enemy['pos'][1] > GRID_LENGTH//2 - 50:  # Reached exit
+        elif enemy['pos'][1] > GRID_LENGTH - 50:  # Reached exit
             sphere_markers[1]['blink_time'] = BLINK_DURATION
             sphere_markers[1]['color'] = [1, 0, 0]  # Red for exit
             new_enemy_positions.remove(enemy)
-            score += 1000
+            escaped_enemies += 1
+            if escaped_enemies >= MAX_ESCAPED_ENEMIES:
+                game_over = True
+                print("Game Over! Too many enemies escaped!")
 
 def move_pickups():
     global pickups
@@ -446,10 +464,10 @@ def check_collisions():
                 score += 1
                 break
                 
-        # New enemies
+        # New enemies - FIXED THIS SECTION
         if not bullet_hit:
             for enemy in new_enemy_positions[:]:
-                ex, ey, ez = enemy['pos']
+                ex, ey, ez = enemy['pos']  # Access enemy's position directly from the dictionary
                 dist = math.sqrt((bx - ex)**2 + (by - ey)**2 + (bz - (ez+50))**2)
                 
                 if dist < 50:
@@ -477,6 +495,7 @@ def check_collisions():
     # Enemy-player collisions
     px, py, pz = player_pos
     
+    # Regular enemies
     for i in range(len(enemy_positions)):
         ex, ey, ez = enemy_positions[i]
         dist = math.sqrt((px - ex)**2 + (py - ey)**2 + (pz - ez)**2)
@@ -486,12 +505,31 @@ def check_collisions():
             if player_life <= 0:
                 game_over = True
     
+    # New enemies
     for enemy in new_enemy_positions[:]:
         ex, ey, ez = enemy['pos']
         dist = math.sqrt((px - ex)**2 + (py - ey)**2 + (pz - (ez+50))**2)
+        
         if dist < player_radius + 40:
-            player_life -= 1
-            new_enemy_positions.remove(enemy)
+            # Player takes 2 damage
+            player_life -= 2
+            
+            # Enemy takes 1 damage
+            enemy['health'] -= 1
+            
+            # Apply knockback to enemy
+            angle = math.atan2(py - ey, px - ex)
+            knockback = 100
+            enemy['pos'][0] -= knockback * math.cos(angle)
+            enemy['pos'][1] -= knockback * math.sin(angle)
+            
+            # Remove enemy if out of bounds or dead
+            if (abs(enemy['pos'][0]) > BOUNDARY_WIDTH or 
+                abs(enemy['pos'][1]) > BOUNDARY_HIGHT):
+                new_enemy_positions.remove(enemy)
+            elif enemy['health'] <= 0:
+                new_enemy_positions.remove(enemy)
+            
             if player_life <= 0:
                 game_over = True
 
@@ -574,7 +612,7 @@ def update_bullets():
 def setupCamera():
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    gluPerspective(fovY, 1.25, 0.1, 1500)
+    gluPerspective(fovY, 1.25, 0.1, 3000)
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
     look()
@@ -648,11 +686,13 @@ def showScreen():
     glViewport(0, 0, 1000, 800)
     setupCamera()
     
-    draw_text(10, 770, f"Score: {score}  Life: {player_life}  Missed: {missed_bullets}")
+    # Update this line to show escaped enemies
+    draw_text(10, 770, f"Score: {score}  Life: {player_life}  Missed: {missed_bullets}  Escaped: {escaped_enemies}/{MAX_ESCAPED_ENEMIES}")
     
+    # Rest of the function remains the same
     draw_floor_with_boundaries()
     draw_player()
-    draw_sphere_markers()  # Draw the sphere markers
+    draw_sphere_markers()
 
     for enemy in enemy_positions:
         draw_enemy(enemy)
