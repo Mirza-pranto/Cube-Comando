@@ -439,7 +439,7 @@ def draw_bullet(bullet):
     glPushMatrix()
     glTranslatef(x, y, z)
     glScalef(0.3, 0.3, 0.3)
-    glColor3f(0, 0, 0.0)
+    glColor3f(0.4, 0.2, 0.3)
     glutSolidCube(20)
     glPopMatrix()
 
