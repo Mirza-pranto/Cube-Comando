@@ -556,7 +556,7 @@ def check_collisions():
         # New enemies
         for enemy in new_enemy_positions[:]:
             ex, ey, ez = enemy['pos']
-            dist = math.sqrt((bx - ex)**2 + (by - ey)**2 + (bz - (ez+50))**2)
+            dist = math.sqrt((bx - ex)**2 + (by - ey)**2 + (bz - (ez))**2)
             
             if dist < 50:
                 bullet_hit = True
@@ -584,11 +584,11 @@ def check_collisions():
         # Giant enemies
         for enemy in giant_enemies[:]:
             ex, ey, ez = enemy['pos']
-            dist = math.sqrt((bx - ex)**2 + (by - ey)**2 + (bz - (ez+80))**2)
+            dist = math.sqrt((bx - ex)**2 + (by - ey)**2 + (bz - (ez))**2)
             
             if dist < 70:  # Larger hit radius for giant enemy
                 bullet_hit = True
-                enemy['health'] -= 1
+                enemy['health'] -= 3
                 score += 1  # 1 point per hit
                 
                 if enemy['health'] <= 0:
@@ -616,7 +616,7 @@ def check_collisions():
     # New enemies
     for enemy in new_enemy_positions[:]:
         ex, ey, ez = enemy['pos']
-        dist = math.sqrt((px - ex)**2 + (py - ey)**2 + (pz - (ez+50))**2)
+        dist = math.sqrt((px - ex)**2 + (py - ey)**2 + (pz - (ez))**2)
         
         if dist < player_radius + 40:
             # Player takes 2 damage
@@ -645,7 +645,7 @@ def check_collisions():
     # Giant enemy-player collisions
     for enemy in giant_enemies[:]:
         ex, ey, ez = enemy['pos']
-        dist = math.sqrt((px - ex)**2 + (py - ey)**2 + (pz - (ez+80))**2)
+        dist = math.sqrt((px - ex)**2 + (py - ey)**2 + (pz - (ez))**2)
         
         if dist < player_radius + 60:  # Larger collision radius
             player_life -= 3  # More damage from giant enemy
