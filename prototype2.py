@@ -4,7 +4,6 @@ from OpenGL.GLU import *
 from math import sin, cos, radians
 import math
 import random
-import time
 
 # === Global Variables ===
 camera_pos = (0, 500, 500)
@@ -36,6 +35,11 @@ new_enemy_positions = []
 new_enemy_spawn_timer = 0
 NEW_ENEMY_SPAWN_INTERVAL = 300  # frames between spawns
 
+# Giant enemy variables
+giant_enemies = []
+GIANT_ENEMY_SPAWN_INTERVAL = 1500  # frames between giant enemy spawns
+giant_enemy_spawn_timer = 0
+
 # Pickup variables
 pickups = []  # Each pickup: {'pos': [x,y,z], 'type': 'health'/'ammo'/'score', 'speed': float}
 PICKUP_SPAWN_INTERVAL = 700  # frames between spawns
@@ -51,11 +55,16 @@ bullets = []  # Each bullet = {'pos': [x, y, z], 'angle': deg}
 bullet_speed = 5
 
 # Sphere markers variables
+SPHERE_RADIUS = GRID_WIDTH * 1.2  # Much larger than grid width
 sphere_markers = [
-    {'pos': [0, -GRID_LENGTH//2, 50], 'color': [1, 1, 1], 'blink_time': 0},  # Entrance sphere
-    {'pos': [0, GRID_LENGTH//2, 50], 'color': [1, 1, 1], 'blink_time': 0}    # Exit sphere
+    {'pos': [0, -GRID_LENGTH +65 - SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [.8, 1, 0], 'blink_time': 0},  # Entrance sphere
+    {'pos': [0, GRID_LENGTH -130+ SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [1, .8, 0], 'blink_time': 0}    # Exit sphere
 ]
 BLINK_DURATION = 30  # frames
+
+escaped_enemies = 0
+MAX_ESCAPED_ENEMIES = 20
+game_over_reason = ""  # Can be "life", "bullets", or "escaped"
 
 # Initialize enemies
 def init_enemies():
@@ -136,11 +145,11 @@ def mouseListener(button, state, x, y):
 def spawn_enemy(min_distance=150, is_new_type=False):
     # Trigger entrance sphere blink
     sphere_markers[0]['blink_time'] = BLINK_DURATION
-    sphere_markers[0]['color'] = [0, 1, 0]  # Green for spawn
+    sphere_markers[0]['color'] = [1, 1, 1]  # white for spawn
     
     while True:
-        x = random.randint(-GRID_WIDTH // 2 + 50, GRID_WIDTH // 2 - 50)
-        y = -GRID_LENGTH//2 + 50  # Always spawn at entrance
+        x = random.randint(-GRID_WIDTH / 2 , GRID_WIDTH /2)
+        y = -GRID_LENGTH + 50  # Always spawn at entrance
         z = 10
 
         px, py, _ = player_pos
@@ -151,6 +160,22 @@ def spawn_enemy(min_distance=150, is_new_type=False):
                 return {'pos': [x, y, z], 'health': 5, 'direction': random.choice([-1, 1])}
             else:
                 return (x, y, z)
+
+def spawn_giant_enemy():
+    # Trigger entrance sphere blink
+    sphere_markers[0]['blink_time'] = BLINK_DURATION
+    sphere_markers[0]['color'] = [1, 0.5, 0]  # Orange for giant spawn
+    
+    x = random.randint(-GRID_WIDTH / 2, GRID_WIDTH / 2)
+    y = -GRID_LENGTH + 50  # Spawn at entrance
+    z = 10
+    
+    return {
+        'pos': [x, y, z],
+        'health': 15,
+        'max_health': 15,
+        'speed': 0.5  # Slower than regular enemies
+    }
 
 def spawn_pickup():
     x = random.randint(-GRID_WIDTH/2, GRID_WIDTH/2)
@@ -165,6 +190,7 @@ def spawn_pickup():
 def reset_game():
     global player_pos, bullets, player_life, missed_bullets
     global game_over, score, pickup_spawn_timer, new_enemy_positions, pickups
+    global escaped_enemies, game_over_reason, giant_enemies, giant_enemy_spawn_timer
     
     player_pos = [0, 780, -30]
     bullets = []
@@ -176,6 +202,10 @@ def reset_game():
     game_over = False
     score = 0
     pickup_spawn_timer = 0
+    escaped_enemies = 0
+    game_over_reason = ""
+    giant_enemies = []
+    giant_enemy_spawn_timer = 0
 
 # === Drawing Functions ===
 def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
@@ -198,16 +228,24 @@ def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
     glMatrixMode(GL_MODELVIEW)
 
 def draw_sphere_markers():
-    for marker in sphere_markers:
+    for i, marker in enumerate(sphere_markers):
         if marker['blink_time'] > 0:
             marker['blink_time'] -= 1
             if marker['blink_time'] <= 0:
-                marker['color'] = [1, 1, 1]  # Reset to white
+                marker['color'] = [1, 1, 0]  # Reset to yellow
         
         glPushMatrix()
         glTranslatef(*marker['pos'])
         glColor3f(*marker['color'])
-        glutSolidSphere(20, 30, 30)
+        
+        if i == 1:  # This is the exit marker (index 1)
+            # Draw a cube instead of sphere for the exit
+            glScalef(1.2, 0.1, 1.2)
+            glutSolidCube(SPHERE_RADIUS * 1.5)  # Slightly larger than the sphere would be
+        else:
+            # Draw normal sphere for entrance
+            glutSolidSphere(SPHERE_RADIUS, 50, 50)
+        
         glPopMatrix()
 
 def draw_player():
@@ -306,10 +344,10 @@ def draw_enemy(position):
     glTranslatef(x, y, z)
     glScalef(scale, scale, scale)
 
-    glColor3f(1.0, 1.0, 1.0)
+    glColor3f(.5, .5, 1.0)
     gluSphere(gluNewQuadric(), 30, 35, 20)  
 
-    glColor3f(1.0, 0, 0)
+    glColor3f(0, 0, 0.501)
     glTranslatef(0, 0, 30)
     gluSphere(gluNewQuadric(), 15, 20, 20)  
     glPopMatrix()
@@ -335,6 +373,49 @@ def draw_new_enemy(enemy):
     glTranslatef(-30, 0, 0)
     gluSphere(gluNewQuadric(), 8, 10, 10)
     glPopMatrix()
+    glPopMatrix()
+
+def draw_giant_enemy(enemy):
+    x, y, z = enemy['pos']
+    health_ratio = max(0.1, enemy['health'] / enemy['max_health'])  # Keep at least 10% size when alive
+    
+    glPushMatrix()
+    glTranslatef(x, y, z + 80)  # Higher position
+    
+    # Main body - scales with health
+    body_scale = 0.5 + 0.5 * health_ratio  # Scales between 50%-100% of original size
+    glPushMatrix()
+    glScalef(body_scale, body_scale, body_scale)
+    glColor3f(0.8, 0.2, 0.2)  # Dark red
+    glutSolidSphere(60, 40, 40)
+    glPopMatrix()
+    
+    # Eyes - don't scale with health
+    glPushMatrix()
+    glColor3f(1, 1, 1)
+    glTranslatef(20 * body_scale, 20 * body_scale, 40 * body_scale)
+    glutSolidSphere(10, 20, 20)
+    glTranslatef(-40 * body_scale, 0, 0)
+    glutSolidSphere(10, 20, 20)
+    glPopMatrix()
+    
+    # Health bar - scales in width with health
+    glPushMatrix()
+    glTranslatef(0, 0, 90 * body_scale)  # Position scales with body
+    glColor3f(0.2/body_scale, 0.2, 0.2)  # Dark gray background
+    glScalef(1.0* body_scale, 0.1 * body_scale, 0.1 * body_scale)  # Scale thickness with body
+    glutSolidCube(120)  # Full width background
+    
+    # Health bar foreground - scales with health
+    glPushMatrix()
+    glTranslatef(-60 * (1 - health_ratio), 0, 0)  # Center the shrinking bar
+    glColor3f(1 - health_ratio, health_ratio, 0)  # Red to green
+    glScalef(health_ratio, 1.0, 1.0)  # Scale width with health
+    glutSolidCube(120)  # Scaled width
+    glPopMatrix()
+    
+    glPopMatrix()
+    
     glPopMatrix()
 
 def draw_pickup(pickup):
@@ -381,7 +462,7 @@ def move_enemy_towards_player():
             ey += dy * speed
 
         # Check if enemy reached exit sphere
-        if ey > GRID_LENGTH//2 - 50:
+        if ey > GRID_LENGTH - 50:
             sphere_markers[1]['blink_time'] = BLINK_DURATION
             sphere_markers[1]['color'] = [1, 0, 0]  # Red for exit
             ex, ey, ez = spawn_enemy()
@@ -390,7 +471,8 @@ def move_enemy_towards_player():
     enemy_positions[:] = updated_positions
 
 def move_new_enemies():
-    global new_enemy_positions, score
+    global new_enemy_positions, score, escaped_enemies, game_over, game_over_reason
+    
     speed = 1.5
     
     for enemy in new_enemy_positions[:]:
@@ -403,11 +485,31 @@ def move_new_enemies():
             abs(enemy['pos'][1]) > BOUNDARY_HIGHT):
             new_enemy_positions.remove(enemy)
             score += 1000
-        elif enemy['pos'][1] > GRID_LENGTH//2 - 50:  # Reached exit
+        elif enemy['pos'][1] > GRID_LENGTH - 50:  # Reached exit
             sphere_markers[1]['blink_time'] = BLINK_DURATION
             sphere_markers[1]['color'] = [1, 0, 0]  # Red for exit
             new_enemy_positions.remove(enemy)
-            score += 1000
+            escaped_enemies += 1
+            if escaped_enemies >= MAX_ESCAPED_ENEMIES:
+                game_over = True
+                game_over_reason = "escaped"
+
+def move_giant_enemies():
+    global giant_enemies, score, escaped_enemies, game_over, game_over_reason
+    
+    for enemy in giant_enemies[:]:
+        # Move straight toward exit (positive Y direction)
+        enemy['pos'][1] += enemy['speed']
+        
+        # Check if reached exit
+        if enemy['pos'][1] > GRID_LENGTH - 50:
+            sphere_markers[1]['blink_time'] = BLINK_DURATION
+            sphere_markers[1]['color'] = [1, 0, 0]  # Red for exit
+            giant_enemies.remove(enemy)
+            escaped_enemies += 1
+            if escaped_enemies >= MAX_ESCAPED_ENEMIES:
+                game_over = True
+                game_over_reason = "escaped"
 
 def move_pickups():
     global pickups
@@ -423,15 +525,17 @@ def move_pickups():
 # === Game Logic Functions ===
 def check_collisions():
     global bullets, enemy_positions, player_life, game_over, score
-    global new_enemy_positions, missed_bullets, pickups
+    global new_enemy_positions, missed_bullets, pickups, giant_enemies, game_over_reason
 
     bullet_radius = 10
     enemy_radius = 20
     player_radius = 30
     new_bullets = []
     
+    px, py, pz = player_pos
+    
     # Bullet collisions
-    for bullet in bullets:
+    for bullet in bullets[:]:
         bx, by, bz = bullet['pos']
         bullet_hit = False
         
@@ -443,39 +547,62 @@ def check_collisions():
                 bullet_hit = True
                 enemy_positions[i] = spawn_enemy()
                 score += 1
+                bullets.remove(bullet)
                 break
                 
-        # New enemies
-        if not bullet_hit:
-            for enemy in new_enemy_positions[:]:
-                ex, ey, ez = enemy['pos']
-                dist = math.sqrt((bx - ex)**2 + (by - ey)**2 + (bz - (ez+50))**2)
+        if bullet_hit:
+            continue
                 
-                if dist < 50:
-                    bullet_hit = True
-                    enemy['health'] -= 1
-                    
-                    angle = math.atan2(by - ey, bx - ex)
-                    knockback = 100
-                    enemy['pos'][0] -= knockback * math.cos(angle)
-                    enemy['pos'][1] -= knockback * math.sin(angle)
-                    
-                    if (abs(enemy['pos'][0]) > BOUNDARY_WIDTH or 
-                        abs(enemy['pos'][1]) > BOUNDARY_HIGHT):
-                        new_enemy_positions.remove(enemy)
-                        score += 10
-                    elif enemy['health'] <= 0:
-                        new_enemy_positions.remove(enemy)
-                        score += 10
-                    break
-                    
-        if not bullet_hit:
-            new_bullets.append(bullet)
-    bullets = new_bullets
+        # New enemies
+        for enemy in new_enemy_positions[:]:
+            ex, ey, ez = enemy['pos']
+            dist = math.sqrt((bx - ex)**2 + (by - ey)**2 + (bz - (ez+50))**2)
+            
+            if dist < 50:
+                bullet_hit = True
+                enemy['health'] -= 1
+                score += 1
+                
+                angle = math.atan2(by - ey, bx - ex)
+                knockback = 100
+                enemy['pos'][0] -= knockback * math.cos(angle)
+                enemy['pos'][1] -= knockback * math.sin(angle)
+                
+                if (abs(enemy['pos'][0]) > BOUNDARY_WIDTH or 
+                    abs(enemy['pos'][1]) > BOUNDARY_HIGHT):
+                    new_enemy_positions.remove(enemy)
+                    score += 10
+                elif enemy['health'] <= 0:
+                    new_enemy_positions.remove(enemy)
+                    score += 10
+                bullets.remove(bullet)
+                break
+                
+        if bullet_hit:
+            continue
+            
+        # Giant enemies
+        for enemy in giant_enemies[:]:
+            ex, ey, ez = enemy['pos']
+            dist = math.sqrt((bx - ex)**2 + (by - ey)**2 + (bz - (ez+80))**2)
+            
+            if dist < 70:  # Larger hit radius for giant enemy
+                bullet_hit = True
+                enemy['health'] -= 1
+                score += 1  # 1 point per hit
+                
+                if enemy['health'] <= 0:
+                    giant_enemies.remove(enemy)
+                    score += 15  # Bonus 15 points for killing
+                
+                bullets.remove(bullet)
+                break
+                
+        if bullet_hit:
+            continue
 
     # Enemy-player collisions
-    px, py, pz = player_pos
-    
+    # Regular enemies
     for i in range(len(enemy_positions)):
         ex, ey, ez = enemy_positions[i]
         dist = math.sqrt((px - ex)**2 + (py - ey)**2 + (pz - ez)**2)
@@ -484,18 +611,49 @@ def check_collisions():
             enemy_positions[i] = spawn_enemy()
             if player_life <= 0:
                 game_over = True
+                game_over_reason = "life"
     
+    # New enemies
     for enemy in new_enemy_positions[:]:
         ex, ey, ez = enemy['pos']
         dist = math.sqrt((px - ex)**2 + (py - ey)**2 + (pz - (ez+50))**2)
+        
         if dist < player_radius + 40:
-            player_life -= 1
-            new_enemy_positions.remove(enemy)
+            # Player takes 2 damage
+            player_life -= 2
+            
+            # Enemy takes 1 damage
+            enemy['health'] -= 1
+            
+            # Apply knockback to enemy
+            angle = math.atan2(py - ey, px - ex)
+            knockback = 100
+            enemy['pos'][0] -= knockback * math.cos(angle)
+            enemy['pos'][1] -= knockback * math.sin(angle)
+            
+            # Remove enemy if out of bounds or dead
+            if (abs(enemy['pos'][0]) > BOUNDARY_WIDTH or 
+                abs(enemy['pos'][1]) > BOUNDARY_HIGHT):
+                new_enemy_positions.remove(enemy)
+            elif enemy['health'] <= 0:
+                new_enemy_positions.remove(enemy)
+            
             if player_life <= 0:
                 game_over = True
+                game_over_reason = "life"
+
+    # Giant enemy-player collisions
+    for enemy in giant_enemies[:]:
+        ex, ey, ez = enemy['pos']
+        dist = math.sqrt((px - ex)**2 + (py - ey)**2 + (pz - (ez+80))**2)
+        
+        if dist < player_radius + 60:  # Larger collision radius
+            player_life -= 3  # More damage from giant enemy
+            if player_life <= 0:
+                game_over = True
+                game_over_reason = "life"
 
     # Pickup collisions
-    px, py, pz = player_pos
     player_collision_height = pz + 50
     
     for pickup in pickups[:]:
@@ -573,7 +731,7 @@ def update_bullets():
 def setupCamera():
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    gluPerspective(fovY, 1.25, 0.1, 1500)
+    gluPerspective(fovY, 1.25, 0.1, 3000)
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
     look()
@@ -602,7 +760,7 @@ def look():
 # === Main Game Loop ===
 def idle():
     global pulse_time, game_over, cheat_fire_timer
-    global new_enemy_spawn_timer, pickup_spawn_timer, score
+    global new_enemy_spawn_timer, pickup_spawn_timer, score, giant_enemy_spawn_timer
 
     if game_over:
         return
@@ -613,11 +771,20 @@ def idle():
     move_enemy_towards_player()
     
     if not game_over:
+        # Regular enemy spawning
         new_enemy_spawn_timer += 1
         if new_enemy_spawn_timer >= NEW_ENEMY_SPAWN_INTERVAL:
             new_enemy_positions.append(spawn_enemy(is_new_type=True))
             new_enemy_spawn_timer = 0
+        
+        # Giant enemy spawning
+        giant_enemy_spawn_timer += 1
+        if giant_enemy_spawn_timer >= GIANT_ENEMY_SPAWN_INTERVAL:
+            giant_enemies.append(spawn_giant_enemy())
+            giant_enemy_spawn_timer = 0
+        
         move_new_enemies()
+        move_giant_enemies()
 
         # Pickup spawning and movement
         pickup_spawn_timer += 1
@@ -636,8 +803,12 @@ def idle():
     update_bullets()
     check_collisions()
 
-    if player_life <= 0 or missed_bullets >= 10:
+    if player_life <= 0:
         game_over = True
+        game_over_reason = "life"
+    elif missed_bullets >= 10:
+        game_over = True
+        game_over_reason = "bullets"
 
     glutPostRedisplay()
 
@@ -647,23 +818,63 @@ def showScreen():
     glViewport(0, 0, 1000, 800)
     setupCamera()
     
-    draw_text(10, 770, f"Score: {score}  Life: {player_life}  Missed: {missed_bullets}")
+    draw_text(10, 770, f"Score: {score}  Life: {player_life}  Missed: {missed_bullets}  Escaped: {escaped_enemies}/{MAX_ESCAPED_ENEMIES}")
     
     draw_floor_with_boundaries()
     draw_player()
-    draw_sphere_markers()  # Draw the sphere markers
+    draw_sphere_markers()
 
     for enemy in enemy_positions:
         draw_enemy(enemy)
         
     for enemy in new_enemy_positions:
         draw_new_enemy(enemy)
+          
+    for enemy in giant_enemies:
+        draw_giant_enemy(enemy)
         
     for pickup in pickups:
         draw_pickup(pickup)
         
     for bullet in bullets:
         draw_bullet(bullet)
+
+    # Game over messages
+    if game_over:
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        gluOrtho2D(0, 1000, 0, 800)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        
+        # Dark semi-transparent background
+        glColor4f(0, 0, 0, 0.7)
+        glBegin(GL_QUADS)
+        glVertex2f(200, 300)
+        glVertex2f(800, 300)
+        glVertex2f(800, 500)
+        glVertex2f(200, 500)
+        glEnd()
+        
+        # Message text
+        if game_over_reason == "escaped":
+            glColor3f(1, 0.2, 0.2)
+            draw_text(250, 450, "The Square world is destroyed by the circles!", GLUT_BITMAP_TIMES_ROMAN_24)
+        elif game_over_reason == "life":
+            glColor3f(1, 0.2, 0.2)
+            draw_text(350, 450, "Game Over! You were defeated!", GLUT_BITMAP_TIMES_ROMAN_24)
+        elif game_over_reason == "bullets":
+            glColor3f(1, 0.2, 0.2)
+            draw_text(350, 450, "Game Over! You ran out of ammo!", GLUT_BITMAP_TIMES_ROMAN_24)
+        
+        draw_text(350, 400, "Press 'R' to restart", GLUT_BITMAP_HELVETICA_18)
+        
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
 
     glutSwapBuffers()
 
@@ -679,7 +890,7 @@ if __name__ == "__main__":
     glutInit()
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
     glutInitWindowSize(1000, 800)
-    glutCreateWindow(b"Bullet Frenzy - 3D Shooter")
+    glutCreateWindow(b"Cube Comando- Alone Warrior")
     init()
     glutDisplayFunc(showScreen)
     glutIdleFunc(idle)

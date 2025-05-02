@@ -61,6 +61,11 @@ BLINK_DURATION = 30  # frames
 escaped_enemies = 0
 MAX_ESCAPED_ENEMIES = 20
 
+# Add with other global variables
+giant_enemies = []
+GIANT_ENEMY_SPAWN_INTERVAL = 1500  # frames between giant enemy spawns
+giant_enemy_spawn_timer = 0
+
 # Initialize enemies
 def init_enemies():
     global enemy_positions
@@ -155,6 +160,21 @@ def spawn_enemy(min_distance=150, is_new_type=False):
                 return {'pos': [x, y, z], 'health': 5, 'direction': random.choice([-1, 1])}
             else:
                 return (x, y, z)
+def spawn_giant_enemy():
+    # Trigger entrance sphere blink
+    sphere_markers[0]['blink_time'] = BLINK_DURATION
+    sphere_markers[0]['color'] = [1, 0.5, 0]  # Orange for giant spawn
+    
+    x = random.randint(-GRID_WIDTH / 2, GRID_WIDTH / 2)
+    y = -GRID_LENGTH + 50  # Spawn at entrance
+    z = 10
+    
+    return {
+        'pos': [x, y, z],
+        'health': 15,
+        'max_health': 15,
+        'speed': 0.5  # Slower than regular enemies
+    }
 
 def spawn_pickup():
     x = random.randint(-GRID_WIDTH/2, GRID_WIDTH/2)
@@ -351,6 +371,41 @@ def draw_new_enemy(enemy):
     gluSphere(gluNewQuadric(), 8, 10, 10)
     glPopMatrix()
     glPopMatrix()
+    
+def draw_giant_enemy(enemy):
+    x, y, z = enemy['pos']
+    health_ratio = enemy['health'] / enemy['max_health']
+    
+    glPushMatrix()
+    glTranslatef(x, y, z + 80)  # Higher position
+    
+    # Main body (larger than regular enemies)
+    glColor3f(0.8, 0.2, 0.2)  # Dark red
+    glutSolidSphere(60, 40, 40)
+    
+    # Eyes
+    glPushMatrix()
+    glColor3f(1, 1, 1)
+    glTranslatef(20, 20, 40)
+    glutSolidSphere(10, 20, 20)
+    glTranslatef(-40, 0, 0)
+    glutSolidSphere(10, 20, 20)
+    glPopMatrix()
+    
+    # Health bar background
+    glPushMatrix()
+    glTranslatef(0, 0, 90)
+    glColor3f(0.2, 0.2, 0.2)
+    glScalef(1.0, 0.1, 0.1)
+    glutSolidCube(120)
+    
+    # Health bar foreground
+    glColor3f(1 - health_ratio, health_ratio, 0)
+    glScalef(health_ratio, 1.0, 1.0)
+    glutSolidCube(120)
+    glPopMatrix()
+    
+    glPopMatrix()
 
 def draw_pickup(pickup):
     x, y, z = pickup['pos']
@@ -427,6 +482,22 @@ def move_new_enemies():
             if escaped_enemies >= MAX_ESCAPED_ENEMIES:
                 game_over = True
                 print("Game Over! Too many enemies escaped!")
+                
+def move_giant_enemies():
+    global giant_enemies, score
+    
+    for enemy in giant_enemies[:]:
+        # Move straight toward exit (positive Y direction)
+        enemy['pos'][1] += enemy['speed']
+        
+        # Check if reached exit
+        if enemy['pos'][1] > GRID_LENGTH - 50:
+            sphere_markers[1]['blink_time'] = BLINK_DURATION
+            sphere_markers[1]['color'] = [1, 0, 0]  # Red for exit
+            giant_enemies.remove(enemy)
+            escaped_enemies += 1
+            if escaped_enemies >= MAX_ESCAPED_ENEMIES:
+                game_over = True
 
 def move_pickups():
     global pickups
