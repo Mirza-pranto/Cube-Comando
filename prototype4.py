@@ -53,8 +53,8 @@ bullet_speed = 5
 # Sphere markers variables
 SPHERE_RADIUS = GRID_WIDTH * 1.2  # Much larger than grid width
 sphere_markers = [
-    {'pos': [0, -GRID_LENGTH +20 - SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [1, 1, 1], 'blink_time': 0},  # Entrance sphere
-    {'pos': [0, GRID_LENGTH -20+ SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [1, 1, 1], 'blink_time': 0}    # Exit sphere
+    {'pos': [0, -GRID_LENGTH +65 - SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [1, 1, 0], 'blink_time': 0},  # Entrance sphere
+    {'pos': [0, GRID_LENGTH -20+ SPHERE_RADIUS, SPHERE_RADIUS//2], 'color': [1, 1, 0], 'blink_time': 0}    # Exit sphere
 ]
 BLINK_DURATION = 30  # frames
 
@@ -137,11 +137,11 @@ def mouseListener(button, state, x, y):
 def spawn_enemy(min_distance=150, is_new_type=False):
     # Trigger entrance sphere blink
     sphere_markers[0]['blink_time'] = BLINK_DURATION
-    sphere_markers[0]['color'] = [0, 1, 0]  # Green for spawn
+    sphere_markers[0]['color'] = [1, 1, 1]  # white for spawn
     
     while True:
-        x = random.randint(-GRID_WIDTH // 2 + 50, GRID_WIDTH // 2 - 50)
-        y = -GRID_LENGTH//2 + 50  # Always spawn at entrance
+        x = random.randint(-GRID_WIDTH / 2 , GRID_WIDTH /2)
+        y = -GRID_LENGTH + 50  # Always spawn at entrance
         z = 10
 
         px, py, _ = player_pos
@@ -203,12 +203,14 @@ def draw_sphere_markers():
         if marker['blink_time'] > 0:
             marker['blink_time'] -= 1
             if marker['blink_time'] <= 0:
-                marker['color'] = [1, 1, 1]  # Reset to white
+                marker['color'] = [1, 1, 0]  # Reset to white
         
         glPushMatrix()
         glTranslatef(*marker['pos'])
         glColor3f(*marker['color'])
+        
         glutSolidSphere(SPHERE_RADIUS, 50, 50)  # Larger and smoother spheres
+        
         glPopMatrix()
 
 def draw_player():
@@ -307,10 +309,10 @@ def draw_enemy(position):
     glTranslatef(x, y, z)
     glScalef(scale, scale, scale)
 
-    glColor3f(1.0, 1.0, 1.0)
+    glColor3f(.5, .5, 1.0)
     gluSphere(gluNewQuadric(), 30, 35, 20)  
 
-    glColor3f(1.0, 0, 0)
+    glColor3f(0, 0, 0.501)
     glTranslatef(0, 0, 30)
     gluSphere(gluNewQuadric(), 15, 20, 20)  
     glPopMatrix()
@@ -382,7 +384,7 @@ def move_enemy_towards_player():
             ey += dy * speed
 
         # Check if enemy reached exit sphere
-        if ey > GRID_LENGTH//2 - 50:
+        if ey > GRID_LENGTH - 50:
             sphere_markers[1]['blink_time'] = BLINK_DURATION
             sphere_markers[1]['color'] = [1, 0, 0]  # Red for exit
             ex, ey, ez = spawn_enemy()
@@ -404,11 +406,11 @@ def move_new_enemies():
             abs(enemy['pos'][1]) > BOUNDARY_HIGHT):
             new_enemy_positions.remove(enemy)
             score += 1000
-        elif enemy['pos'][1] > GRID_LENGTH//2 - 50:  # Reached exit
+        elif enemy['pos'][1] > GRID_LENGTH - 50:  # Reached exit
             sphere_markers[1]['blink_time'] = BLINK_DURATION
             sphere_markers[1]['color'] = [1, 0, 0]  # Red for exit
             new_enemy_positions.remove(enemy)
-            score += 1000
+            #score += 1000
 
 def move_pickups():
     global pickups
@@ -574,7 +576,7 @@ def update_bullets():
 def setupCamera():
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    gluPerspective(fovY, 1.25, 0.1, 1500)
+    gluPerspective(fovY, 1.25, 0.1, 3000)
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
     look()
